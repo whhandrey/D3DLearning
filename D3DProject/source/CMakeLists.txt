@@ -14,7 +14,11 @@ add_executable ("source" "main.cpp" ${SUBDIRECTORIES})
 
 # include dirs and link libs
 target_include_directories("source" PRIVATE "${CMAKE_SOURCE_DIR}/source")
+
 target_link_libraries("source" PRIVATE glfw)
+target_link_libraries("source" PRIVATE d3d11.lib)
+target_link_libraries("source" PRIVATE d3dcompiler.lib)
+target_link_libraries("source" PRIVATE dxguid.lib)
 
 # debug and release flags
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")

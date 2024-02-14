@@ -1,5 +1,6 @@
 ﻿#include <common/glfwAutoInit.h>
 #include <window/Window.h>
+#include <renderer/Renderer.h>
 
 #include <iostream>
 
@@ -16,8 +17,12 @@ int main() {
 		return EXIT_FAILURE;
 	}
 
+	Renderer renderer(wnd);
+
 	while (wnd.IsVisible()) {
 		wnd.Run();
+		renderer.Clear({ 126, 154, 56, 255 });
+		renderer.Present();
 	}
 
 	return 0;

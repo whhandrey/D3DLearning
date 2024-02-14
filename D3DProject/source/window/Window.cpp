@@ -36,3 +36,8 @@ WindowSize Window::GetSize() const
 {
     return m_size;
 }
+
+HWND Window::GetNativeHandle() const
+{
+    return glfwGetWin32Window(m_window);
+}

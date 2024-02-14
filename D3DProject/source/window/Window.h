@@ -24,6 +24,8 @@ public:
     bool IsVisible() const;
     WindowSize GetSize() const;
 
+    HWND GetNativeHandle() const;
+
 private:
     GLFWwindow* m_window;
     const WindowSize m_size;

@@ -22,6 +22,7 @@ int main() {
 	while (wnd.IsVisible()) {
 		wnd.Run();
 		renderer.Clear({ 126, 154, 56, 255 });
+		renderer.Draw(3);
 		renderer.Present();
 	}
 

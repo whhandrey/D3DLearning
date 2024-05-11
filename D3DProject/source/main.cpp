@@ -1,8 +1,23 @@
 ﻿#include <common/glfwAutoInit.h>
 #include <window/Window.h>
 #include <renderer/Renderer.h>
+#include <renderer/RenderManager.h>
 
 #include <iostream>
+
+namespace object {
+	ObjectData triangleData {
+		std::vector<Vertex> {
+			{ { -0.5f, -0.5f, 0.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } },
+			{ {  0.0f,  0.5f, 0.0f }, { 0.0f, 1.0f, 0.0f, 1.0f } },
+			{ {  0.5f, -0.5f, 0.0f }, { 0.0f, 0.0f, 1.0f, 1.0f } }
+		},
+
+		std::vector<uint32_t> {
+		    0, 1, 2
+		}
+	};
+}
 
 int main() {
 	glfwAutoInit init;
@@ -17,13 +32,17 @@ int main() {
 		return EXIT_FAILURE;
 	}
 
-	Renderer renderer(wnd);
+	auto state = render::State::Create();
+	auto renderer = std::make_shared<render::Renderer>(wnd, state);
+
+	auto manager = render::RenderManager(renderer, state);
+	size_t id = manager.AddObject(object::triangleData);
 
 	while (wnd.IsVisible()) {
 		wnd.Run();
-		renderer.Clear({ 126, 154, 56, 255 });
-		renderer.Draw(3);
-		renderer.Present();
+		renderer->Clear({ 126, 154, 56, 255 });
+		manager.Draw(id);
+		renderer->Present();
 	}
 
 	return 0;

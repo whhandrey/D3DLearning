@@ -1,6 +1,7 @@
 #include "Renderer.h"
 #include <common/Com.h>
 #include <window/Window.h>
+#include <object/ObjectData.h>
 
 #include <fstream>
 #include <filesystem>
@@ -70,212 +71,174 @@ namespace d3dcompile {
     }
 }
 
-Renderer::Renderer(Window& window)
-    : m_window{ window }
-{
-    CreateDevice();
-    CreateSwapChain();
-    CreateRenderTargetView();
-    CreateShaders();
-    CreateInputLayout();
-    SetPipeline();
-    CreateAndBindVertexBuffer();
-    CreateAndBindIndexBuffer();
-}
+namespace render {
+    State::State(const ComPtr<ID3D11Device>& device, const ComPtr<ID3D11DeviceContext>& context)
+        : m_device{ device }
+        , m_context{ context }
+    {
+    }
 
-void Renderer::CreateDevice()
-{
-    const D3D_FEATURE_LEVEL featureLevels[] = { D3D_FEATURE_LEVEL_11_0 };
-    com::ThrowIfFailed(
-        D3D11CreateDevice(
-            nullptr,
-            D3D_DRIVER_TYPE_HARDWARE,
-            nullptr,
-            0,
-            featureLevels,
-            1,
-            D3D11_SDK_VERSION,
-            m_device.GetAddressOf(),
-            nullptr,
-            m_context.GetAddressOf()
-        )
-    );
-}
+    ComPtr<ID3D11Device> State::Device() {
+        return m_device;
+    }
 
-void Renderer::CreateSwapChain()
-{
-    DXGI_SWAP_CHAIN_DESC swapChainDesc = {};
-    swapChainDesc.BufferCount = 1;
-    swapChainDesc.BufferDesc.Width = m_window.GetSize().m_width;
-    swapChainDesc.BufferDesc.Height = m_window.GetSize().m_height;
-    swapChainDesc.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-    swapChainDesc.BufferDesc.RefreshRate.Numerator = 60;
-    swapChainDesc.BufferDesc.RefreshRate.Denominator = 1;
-    swapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-    swapChainDesc.OutputWindow = m_window.GetNativeHandle();
-    swapChainDesc.SampleDesc.Count = 1;
-    swapChainDesc.SampleDesc.Quality = 0;
-    swapChainDesc.Windowed = TRUE;
+    ComPtr<ID3D11DeviceContext> State::Context() {
+        return m_context;
+    }
 
-    ComPtr<IDXGIDevice> dxgiDevice;
-    com::ThrowIfFailed(m_device.As(&dxgiDevice));
+    std::shared_ptr<State> State::Create() {
+        ComPtr<ID3D11Device> device;
+        ComPtr<ID3D11DeviceContext> context;
 
-    ComPtr<IDXGIAdapter> dxgiAdapter;
-    com::ThrowIfFailed(dxgiDevice->GetAdapter(dxgiAdapter.GetAddressOf()));
+        const D3D_FEATURE_LEVEL featureLevels[] = { D3D_FEATURE_LEVEL_11_0 };
+        com::ThrowIfFailed(
+            D3D11CreateDevice(
+                nullptr,
+                D3D_DRIVER_TYPE_HARDWARE,
+                nullptr,
+                0,
+                featureLevels,
+                1,
+                D3D11_SDK_VERSION,
+                device.GetAddressOf(),
+                nullptr,
+                context.GetAddressOf()
+            )
+        );
 
-    ComPtr<IDXGIFactory> dxgiFactory;
-    com::ThrowIfFailed(dxgiAdapter->GetParent(__uuidof(IDXGIFactory), &dxgiFactory));
+        return std::shared_ptr<State>(new State(device, context));
+    }
 
-    com::ThrowIfFailed(dxgiFactory->CreateSwapChain(m_device.Get(), &swapChainDesc, m_swapChain.GetAddressOf()));
-}
+    Renderer::Renderer(Window& window, const std::shared_ptr<State>& state)
+        : m_window{ window }
+        , m_state{ state }
+    {
+        CreateSwapChain();
+        CreateRenderTargetView();
+        CreateShaders();
+        CreateInputLayout();
+        SetPipeline();
+    }
 
-void Renderer::CreateRenderTargetView()
-{
-    ComPtr<ID3D11Texture2D> backBuffer;
-    com::ThrowIfFailed(m_swapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), &backBuffer));
+    void Renderer::CreateSwapChain()
+    {
+        DXGI_SWAP_CHAIN_DESC swapChainDesc = {};
+        swapChainDesc.BufferCount = 1;
+        swapChainDesc.BufferDesc.Width = m_window.GetSize().m_width;
+        swapChainDesc.BufferDesc.Height = m_window.GetSize().m_height;
+        swapChainDesc.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        swapChainDesc.BufferDesc.RefreshRate.Numerator = 60;
+        swapChainDesc.BufferDesc.RefreshRate.Denominator = 1;
+        swapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+        swapChainDesc.OutputWindow = m_window.GetNativeHandle();
+        swapChainDesc.SampleDesc.Count = 1;
+        swapChainDesc.SampleDesc.Quality = 0;
+        swapChainDesc.Windowed = TRUE;
 
-    com::ThrowIfFailed(m_device->CreateRenderTargetView(backBuffer.Get(), nullptr, m_renderTargetView.GetAddressOf()));
-}
+        ComPtr<IDXGIDevice> dxgiDevice;
+        com::ThrowIfFailed(m_state->Device().As(&dxgiDevice));
 
-void Renderer::CreateShaders()
-{
-    ComPtr<ID3D10Blob> pixelShaderByteCode = d3dcompile::CompileShader("PixelShader.hlsl", "main", "ps_5_0");
+        ComPtr<IDXGIAdapter> dxgiAdapter;
+        com::ThrowIfFailed(dxgiDevice->GetAdapter(dxgiAdapter.GetAddressOf()));
 
-    com::ThrowIfFailed(
-        m_device->CreatePixelShader(
-            pixelShaderByteCode->GetBufferPointer(),
-            pixelShaderByteCode->GetBufferSize(),
-            nullptr,
-            m_pixelShader.GetAddressOf()
-        )
-    );
+        ComPtr<IDXGIFactory> dxgiFactory;
+        com::ThrowIfFailed(dxgiAdapter->GetParent(__uuidof(IDXGIFactory), &dxgiFactory));
 
-    m_vertexShaderByteCode = d3dcompile::CompileShader("VertexShader.hlsl", "main", "vs_5_0");
+        com::ThrowIfFailed(dxgiFactory->CreateSwapChain(m_state->Device().Get(), &swapChainDesc, m_swapChain.GetAddressOf()));
+    }
 
-    com::ThrowIfFailed(
-        m_device->CreateVertexShader(
-            m_vertexShaderByteCode->GetBufferPointer(),
-            m_vertexShaderByteCode->GetBufferSize(),
-            nullptr,
-            m_vertexShader.GetAddressOf()
-        )
-    );
-}
+    void Renderer::CreateRenderTargetView()
+    {
+        ComPtr<ID3D11Texture2D> backBuffer;
+        com::ThrowIfFailed(m_swapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), &backBuffer));
 
-void Renderer::CreateInputLayout()
-{
-    D3D11_INPUT_ELEMENT_DESC inElemDesc[] = {
-        { "POSITION", 0, DXGI_FORMAT::DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-        { "COLOR", 0, DXGI_FORMAT::DXGI_FORMAT_R32G32B32A32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 }
-    };
+        com::ThrowIfFailed(m_state->Device()->CreateRenderTargetView(backBuffer.Get(), nullptr, m_renderTargetView.GetAddressOf()));
+    }
 
-    com::ThrowIfFailed(
-        m_device->CreateInputLayout(
-            inElemDesc,
-            2,
-            m_vertexShaderByteCode->GetBufferPointer(),
-            m_vertexShaderByteCode->GetBufferSize(),
-            m_inputLayout.GetAddressOf()
-        )
-    );
-}
+    void Renderer::CreateShaders()
+    {
+        ComPtr<ID3D10Blob> pixelShaderByteCode = d3dcompile::CompileShader("PixelShader.hlsl", "main", "ps_5_0");
 
-void Renderer::CreateAndBindVertexBuffer()
-{
-    struct Vertex {
-        XMFLOAT3 position;
-        XMFLOAT4 color;
-    };
+        com::ThrowIfFailed(
+            m_state->Device()->CreatePixelShader(
+                pixelShaderByteCode->GetBufferPointer(),
+                pixelShaderByteCode->GetBufferSize(),
+                nullptr,
+                m_pixelShader.GetAddressOf()
+            )
+        );
 
-    Vertex vertices[] = {
-        { { -0.5f, -0.5f, 0.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } },
-        { {  0.0f,  0.5f, 0.0f }, { 0.0f, 1.0f, 0.0f, 1.0f } },
-        { {  0.5f, -0.5f, 0.0f }, { 0.0f, 0.0f, 1.0f, 1.0f } }
-    };
+        m_vertexShaderByteCode = d3dcompile::CompileShader("VertexShader.hlsl", "main", "vs_5_0");
 
-    D3D11_BUFFER_DESC bufferDesc = {};
-    bufferDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-    bufferDesc.ByteWidth = sizeof(Vertex) * 3;
-    bufferDesc.Usage = D3D11_USAGE_DEFAULT;
-    bufferDesc.CPUAccessFlags = 0;
-    bufferDesc.MiscFlags = 0;
-    bufferDesc.StructureByteStride = 0;
+        com::ThrowIfFailed(
+            m_state->Device()->CreateVertexShader(
+                m_vertexShaderByteCode->GetBufferPointer(),
+                m_vertexShaderByteCode->GetBufferSize(),
+                nullptr,
+                m_vertexShader.GetAddressOf()
+            )
+        );
+    }
 
-    D3D11_SUBRESOURCE_DATA subresourceData = {};
-    subresourceData.pSysMem = vertices;
+    void Renderer::CreateInputLayout()
+    {
+        D3D11_INPUT_ELEMENT_DESC inElemDesc[] = {
+            { "POSITION", 0, DXGI_FORMAT::DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+            { "COLOR", 0, DXGI_FORMAT::DXGI_FORMAT_R32G32B32A32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 }
+        };
 
-    com::ThrowIfFailed(
-        m_device->CreateBuffer(
-            &bufferDesc,
-            &subresourceData,
-            m_vertexBuffer.GetAddressOf()
-        )
-    );
+        com::ThrowIfFailed(
+            m_state->Device()->CreateInputLayout(
+                inElemDesc,
+                2,
+                m_vertexShaderByteCode->GetBufferPointer(),
+                m_vertexShaderByteCode->GetBufferSize(),
+                m_inputLayout.GetAddressOf()
+            )
+        );
+    }
 
-    uint32_t stride = sizeof(Vertex);
-    uint32_t offset = 0;
+    void Renderer::SetPipeline()
+    {
+        m_state->Context()->IASetInputLayout(m_inputLayout.Get());
+        m_state->Context()->IASetPrimitiveTopology(D3D10_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-    m_context->IASetVertexBuffers(0, 1, m_vertexBuffer.GetAddressOf(), &stride, &offset);
-}
+        m_state->Context()->VSSetShader(m_vertexShader.Get(), nullptr, 0);
+        m_state->Context()->PSSetShader(m_pixelShader.Get(), nullptr, 0);
+        m_state->Context()->OMSetRenderTargets(1, m_renderTargetView.GetAddressOf(), nullptr);
 
-void Renderer::CreateAndBindIndexBuffer()
-{
-    int indices[] = { 0, 1, 2 };
+        D3D11_VIEWPORT viewport = {};
+        viewport.Width = static_cast<float>(m_window.GetSize().m_width);
+        viewport.Height = static_cast<float>(m_window.GetSize().m_height);
+        viewport.MaxDepth = 1.0f;
+        viewport.MinDepth = 0.0f;
+        viewport.TopLeftX = 0.0f;
+        viewport.TopLeftY = 0.0f;
 
-    D3D11_BUFFER_DESC bufferDesc = {};
-    bufferDesc.BindFlags = D3D11_BIND_INDEX_BUFFER;
-    bufferDesc.ByteWidth = sizeof(int) * 3;
-    bufferDesc.Usage = D3D11_USAGE_DEFAULT;
-    bufferDesc.CPUAccessFlags = 0;
-    bufferDesc.MiscFlags = 0;
-    bufferDesc.StructureByteStride = 0;
+        m_state->Context()->RSSetViewports(1, &viewport);
+    }
 
-    D3D11_SUBRESOURCE_DATA subresourceData = {};
-    subresourceData.pSysMem = indices;
+    void Renderer::Clear(XMUINT4 color)
+    {
+        float in_color[] = { color.x / 255.0f, color.y / 255.0f, color.z / 255.0f, color.w / 255.0f };
+        m_state->Context()->ClearRenderTargetView(m_renderTargetView.Get(), in_color);
+    }
 
-    com::ThrowIfFailed(
-        m_device->CreateBuffer(
-            &bufferDesc,
-            &subresourceData,
-            m_indexBuffer.GetAddressOf()
-        )
-    );
+    void Renderer::Bind(const ComPtr<ID3D11Buffer>& vertexBuffer, const ComPtr<ID3D11Buffer>& indexBuffer) {
+        uint32_t stride = sizeof(Vertex);
+        uint32_t offset = 0;
 
-    m_context->IASetIndexBuffer(m_indexBuffer.Get(), DXGI_FORMAT_R32_UINT, 0);
-}
+        m_state->Context()->IASetVertexBuffers(0, 1, vertexBuffer.GetAddressOf(), &stride, &offset);
+        m_state->Context()->IASetIndexBuffer(indexBuffer.Get(), DXGI_FORMAT_R32_UINT, 0);
+    }
 
-void Renderer::SetPipeline()
-{
-    m_context->IASetInputLayout(m_inputLayout.Get());
-    m_context->IASetPrimitiveTopology(D3D10_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    void Renderer::Draw(uint32_t indexCount)
+    {
+        m_state->Context()->DrawIndexed(indexCount, 0, 0);
+    }
 
-    m_context->VSSetShader(m_vertexShader.Get(), nullptr, 0);
-    m_context->PSSetShader(m_pixelShader.Get(), nullptr, 0);
-    m_context->OMSetRenderTargets(1, m_renderTargetView.GetAddressOf(), nullptr);
-
-    D3D11_VIEWPORT viewport = {};
-    viewport.Width = static_cast<float>(m_window.GetSize().m_width);
-    viewport.Height = static_cast<float>(m_window.GetSize().m_height);
-    viewport.MaxDepth = 1.0f;
-    viewport.MinDepth = 0.0f;
-    viewport.TopLeftX = 0.0f;
-    viewport.TopLeftY = 0.0f;
-
-    m_context->RSSetViewports(1, &viewport);
-}
-
-void Renderer::Clear(XMUINT4 color)
-{
-    float in_color[] = {color.x / 255.0f, color.y / 255.0f, color.z / 255.0f, color.w / 255.0f};
-    m_context->ClearRenderTargetView(m_renderTargetView.Get(), in_color);
-}
-
-void Renderer::Draw(uint32_t indexCount)
-{
-    m_context->DrawIndexed(indexCount, 0, 0);
-}
-
-void Renderer::Present()
-{
-    m_swapChain->Present(1, 0);
+    void Renderer::Present()
+    {
+        m_swapChain->Present(1, 0);
+    }
 }

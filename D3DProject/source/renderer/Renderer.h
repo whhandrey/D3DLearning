@@ -4,47 +4,61 @@
 #include <DirectXMath.h>
 using namespace DirectX;
 
+#include <memory>
 #include <wrl.h>
 using namespace Microsoft::WRL;
 
 class Window;
 
-class Renderer {
-public:
-    Renderer(Window& window);
-    ~Renderer() = default;
+namespace render {
+    class State {
+    private:
+        State(const ComPtr<ID3D11Device>& device, const ComPtr<ID3D11DeviceContext>& context);
 
-public:
-    void Clear(XMUINT4 color);
+    public:
+        static std::shared_ptr<State> Create();
 
-    void Draw(uint32_t indexCount);
-    void Present();
+        ComPtr<ID3D11Device> Device();
+        ComPtr<ID3D11DeviceContext> Context();
 
-private:
-    void CreateDevice();
-    void CreateSwapChain();
-    void CreateRenderTargetView();
-    void CreateShaders();
-    void CreateInputLayout();
-    void SetPipeline();
-    void CreateAndBindVertexBuffer();
-    void CreateAndBindIndexBuffer();
+    private:
+        ComPtr<ID3D11Device> m_device;
+        ComPtr<ID3D11DeviceContext> m_context;
+    };
 
-private:
-    Window& m_window;
+    class Renderer {
+    public:
+        Renderer(Window& window, const std::shared_ptr<State>& state);
+        ~Renderer() = default;
 
-    ComPtr<ID3D11Device> m_device = nullptr;
-    ComPtr<ID3D11DeviceContext> m_context = nullptr;
+    public:
+        void Clear(XMUINT4 color);
+        void Bind(const ComPtr<ID3D11Buffer>& vertexBuffer, const ComPtr<ID3D11Buffer>& indexBuffer);
 
-    ComPtr<IDXGISwapChain> m_swapChain = nullptr;
-    ComPtr<ID3D11RenderTargetView> m_renderTargetView = nullptr;
+        void Draw(uint32_t indexCount);
+        void Present();
 
-    ComPtr<ID3D11VertexShader> m_vertexShader = nullptr;
-    ComPtr<ID3D10Blob> m_vertexShaderByteCode = nullptr;
+    private:
+        void CreateSwapChain();
+        void CreateRenderTargetView();
+        void CreateShaders();
+        void CreateInputLayout();
+        void SetPipeline();
 
-    ComPtr<ID3D11PixelShader> m_pixelShader = nullptr;
-    ComPtr<ID3D11InputLayout> m_inputLayout = nullptr;
+    private:
+        Window& m_window;
+        std::shared_ptr<State> m_state;
 
-    ComPtr<ID3D11Buffer> m_vertexBuffer = nullptr;
-    ComPtr<ID3D11Buffer> m_indexBuffer = nullptr;
-};
+        ComPtr<IDXGISwapChain> m_swapChain = nullptr;
+        ComPtr<ID3D11RenderTargetView> m_renderTargetView = nullptr;
+
+        ComPtr<ID3D11VertexShader> m_vertexShader = nullptr;
+        ComPtr<ID3D10Blob> m_vertexShaderByteCode = nullptr;
+
+        ComPtr<ID3D11PixelShader> m_pixelShader = nullptr;
+        ComPtr<ID3D11InputLayout> m_inputLayout = nullptr;
+
+        ComPtr<ID3D11Buffer> m_vertexBuffer = nullptr;
+        ComPtr<ID3D11Buffer> m_indexBuffer = nullptr;
+    };
+}
